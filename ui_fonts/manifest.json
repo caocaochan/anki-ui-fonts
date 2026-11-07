@@ -1,0 +1,10 @@
+{
+  "package": "anki_ui_fonts",
+  "name": "Anki UI Fonts",
+  "human_version": "1.0.1",
+  "min_point_version": 260904,
+  "max_point_version": 260904,
+  "author": "caocaochan",
+  "homepage": "https://github.com/caocaochan/anki-ui-fonts",
+  "conflicts": []
+}
