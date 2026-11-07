@@ -6,9 +6,13 @@ Set fonts for the interface and browser entries independently, with separate Lat
 
 ## Install
 
-1. Download `anki-ui-fonts-1.0.1.ankiaddon` from the [latest release](https://github.com/caocaochan/anki-ui-fonts/releases/latest).
-2. In Anki, open **Tools → Add-ons → Install from file…**, select the downloaded file, and restart Anki.
+1. In Anki, open **Tools → Add-ons → Get Add-ons…** and enter **`1031646718`** ([AnkiWeb listing](https://ankiweb.net/shared/info/1031646718)).
+2. Restart Anki.
 3. Open **Tools → UI Fonts…**. The add-on's **Config** button opens the same dialog.
+
+Alternatively, download `anki-ui-fonts-1.0.1.ankiaddon` from the [latest GitHub release](https://github.com/caocaochan/anki-ui-fonts/releases/latest) and use **Install from file…**.
+
+If switching from the GitHub package to AnkiWeb, disable the existing GitHub-installed copy before enabling the AnkiWeb copy. AnkiWeb uses a different add-on folder ID, so the copies can coexist and their settings are not migrated automatically.
 
 The package has no dependencies beyond Anki and does not include fonts. Development testing uses isolated profiles.
 
