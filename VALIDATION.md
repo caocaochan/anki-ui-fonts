@@ -1,5 +1,13 @@
 # Validation
 
+## Version 1.1.0 browser note-field locale
+
+The existing main locale now also applies to browser note-field wrappers, outside the saved editable HTML. No configuration keys or controls were added. All 16 unit/Qt tests passed. The expanded integration suite passed 61 checks with the legacy editor at 200% scaling and 61 with the newer Svelte editor at 150% scaling on Anki 26.09.4 / Qt 6.11.2.
+
+New checks verify language inheritance through the real rich-text shadow DOM, live locale changes, unchanged field HTML/font families/sizes, preserved explicit content-language tags, restoration of absent/nonempty wrapper attributes, observer cleanup, newly mounted fields, note switching, and exclusion of Add Notes. Existing reviewer/preview/template and collection-content checks still pass. Runs exited successfully; the legacy harness also emitted a late Anki collection-operation callback warning during shutdown, while the Svelte run emitted an aborted-render warning during a mode switch. These are recorded separately from the successful typography assertions.
+
+Current artifact: `dist/anki-ui-fonts-1.1.0.ankiaddon`. SHA-256 is recorded in the GitHub release's `SHA256SUMS` asset.
+
 ## Version 1.0.1 preview-height update
 
 Both preview height ranges were halved: general UI 50–80 logical pixels and browser entries 65–90. Unused dialog space is allocated below the sections so they do not expand to fill it. All 16 unit/Qt tests passed again. A rendered Qt layout check confirmed actual heights of 80 and 90 logical pixels. The full integration/visual results below describe the 1.0.0 baseline; they were not repeated for this layout-only update.

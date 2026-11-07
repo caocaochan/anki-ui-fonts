@@ -15,6 +15,7 @@ from aqt.qt import sip
 from aqt.webview import AnkiWebView
 
 from .settings import Settings, effective_locale, load_settings
+from .editor_locale import editor_locale_script
 from .typography import FontResolver, explicit_font, web_css, web_script
 
 UI_CONTEXT_MODULES = {
@@ -34,6 +35,12 @@ def ui_context(context: object) -> bool:
     return cls.__module__ in UI_CONTEXT_MODULES or (
         cls.__module__ == "aqt.reviewer" and cls.__name__ == "ReviewerBottomBar"
     )
+
+
+def browser_editor_context(context: object) -> bool:
+    from aqt.browser import Browser
+
+    return isinstance(getattr(context, "parentWindow", None), Browser)
 
 
 @dataclass
@@ -69,6 +76,8 @@ class FontController(QObject):
         gui_hooks.browser_will_show.append(self.browser_will_show)
         gui_hooks.webview_will_set_content.append(self.webview_will_set_content)
         gui_hooks.webview_did_inject_style_into_page.append(self.style_injected)
+        gui_hooks.editor_web_view_did_init.append(self.editor_webview_initialized)
+        gui_hooks.editor_did_load_note.append(self.editor_note_loaded)
         gui_hooks.theme_did_change.append(self.queue_refresh)
         gui_hooks.profile_did_open.append(self.queue_refresh)
         gui_hooks.profile_will_close.append(self.close_dialog)
@@ -148,6 +157,33 @@ class FontController(QObject):
 
     def browser_will_show(self, browser) -> None:
         self.update_browser(browser.table)
+        self.update_editor_locale(browser.editor.web)
+
+    def editor_webview_initialized(self, web) -> None:
+        if not browser_editor_context(getattr(web, "editor", None)):
+            return
+        if getattr(web, "_anki_ui_fonts_locale_connected", False):
+            return
+        web._anki_ui_fonts_locale_connected = True
+        ref = weakref.ref(web)
+
+        def loaded(*args):
+            current = ref()
+            if current is not None and not sip.isdeleted(current):
+                self.update_editor_locale(current)
+
+        web.loadFinished.connect(loaded)
+
+    def editor_note_loaded(self, editor) -> None:
+        if browser_editor_context(editor):
+            self.update_editor_locale(editor.web)
+
+    def update_editor_locale(self, web) -> None:
+        if getattr(getattr(web, "kind", None), "name", "") != "EDITOR":
+            return
+        editor = getattr(web, "editor", getattr(web, "_bridge_context", None))
+        if browser_editor_context(editor):
+            web.eval(editor_locale_script(self.settings.locale))
 
     def update_browser(self, table, fresh_baseline: bool = False) -> None:
         view = table._view
@@ -244,6 +280,9 @@ class FontController(QObject):
         self.update_webview(web)
 
     def update_webview(self, web) -> None:
+        if getattr(getattr(web, "kind", None), "name", "") == "EDITOR":
+            self.update_editor_locale(web)
+            return
         if not self.supported_webview(web):
             return
         script = web_script(self._web_css(web.logicalDpiX()), self.settings.locale)

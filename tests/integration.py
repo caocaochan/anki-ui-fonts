@@ -28,6 +28,7 @@ parser.add_argument("--inspect", action="store_true")
 parser.add_argument("--restart", action="store_true")
 parser.add_argument("--profile", default=".test-profile")
 parser.add_argument("--scale-factor", type=float)
+parser.add_argument("--new-editor", action="store_true")
 args = parser.parse_args()
 if args.inspect:
     (OUTPUT / "stop").unlink(missing_ok=True)
@@ -143,7 +144,7 @@ def tests():
             for number in range(120):
                 note = col.new_note(model)
                 note["Front"] = f"English {number:03} 简体中文 骨直令遍返 日本語 かな カナ 한국어 🙂"
-                note["Back"] = '<span style="font-family: Times New Roman; font-size: 27px;">Card text 骨直令</span>'
+                note["Back"] = '<span lang="ja" style="font-family: Times New Roman; font-size: 27px;">Card text 骨直令</span>'
                 note.tags = ["ui_font_test"] + (["marked"] if number == 0 else [])
                 col.add_note(note, col.decks.id("Font Tests 简体中文 骨直令"))
         # Exercise template-specific browser fonts and sizes.
@@ -153,6 +154,8 @@ def tests():
         col.models.save(model)
         ids = col.find_cards("tag:ui_font_test")
         col.sched.suspend_cards([ids[-1]])
+        from anki.collection import ExperimentFlag
+        col._experiments[str(ExperimentFlag.SVELTE_EDITOR)] = args.new_editor
         browser = aqt.dialogs.open("Browser", mw, search=("tag:ui_font_test",))
         wait_until(lambda: browser.table._model.rowCount() == len(ids) and browser.editor.web._domDone and getattr(browser.editor, "_ready", True))
         wait_until(lambda: web_eval(browser.editor.web, "typeof saveNow === 'function'"))
@@ -192,10 +195,58 @@ def tests():
         check(abs(float(web_eval(mw.web, "parseFloat(getComputedStyle(document.body).fontSize)")) - 11.5 * mw.web.logicalDpiX() / 72) < 0.05, "Web UI font size matches the configured point size")
         check(web_eval(browser.editor.web, "document.getElementById('anki-ui-fonts') === null"), "Note editor DOM is excluded")
         check(not controller.supported_webview(browser.editor.web), "Editor remains outside web styling coverage")
+        editor_web = browser.editor.web
+        field_locales = "Array.from(document.querySelectorAll('.editing-area')).map(element => element.getAttribute('lang'))"
+        field_snapshot = """Array.from(document.querySelectorAll('.rich-text-editable')).map(host => {
+            const field = host.shadowRoot && host.shadowRoot.querySelector('anki-editable');
+            if (!field) return null;
+            const style = getComputedStyle(field);
+            return {html: field.innerHTML, family: style.fontFamily, size: style.fontSize};
+        })"""
+        wait_until(lambda: web_eval(editor_web, "document.querySelectorAll('.editing-area').length > 0"))
+        check(all(value == "zh-Hans" for value in web_eval(editor_web, field_locales)), "Browser note fields inherit the rendering locale by default")
+        check(web_eval(editor_web, "document.querySelector('.rich-text-editable').shadowRoot.querySelector('anki-editable').matches(':lang(zh-Hans)')"), "Rendering language reaches the real rich-text shadow DOM")
+        original_fields = web_eval(editor_web, field_snapshot)
+        controller.save(replace(custom, locale="ja"))
+        check(all(value == "ja" for value in web_eval(editor_web, field_locales)), "Browser note fields follow live changes to the main locale")
+        check(web_eval(mw.web, "document.documentElement.lang") == "ja", "Editor and UI share the same locale setting")
+        check(web_eval(editor_web, field_snapshot) == original_fields, "Changing editor locale preserves field HTML, font family, and font size")
+        check(web_eval(editor_web, "document.querySelectorAll('.rich-text-editable')[1].shadowRoot.querySelector('[lang=ja]').matches(':lang(ja)')"), "Explicit language tags in note content remain intact")
+        controller.save(replace(custom, locale=""))
+        check(all(value is None for value in web_eval(editor_web, field_locales)), "Anki default restores original field-wrapper language attributes")
+        check(web_eval(editor_web, "typeof window.__ankiUiFontsEditorLocale === 'undefined'"), "Disabling the editor override disconnects its observer")
+        controller.save(custom)
+        web_eval(editor_web, """(() => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'editing-area'; wrapper.id = 'locale-test-wrapper';
+            wrapper.lang = 'ko'; document.body.appendChild(wrapper);
+        })()""")
+        wait_until(lambda: web_eval(editor_web, "document.getElementById('locale-test-wrapper').lang") == "zh-Hans")
+        check(True, "Newly mounted field wrappers receive the locale automatically")
+        controller.save(replace(custom, locale=""))
+        check(web_eval(editor_web, "document.getElementById('locale-test-wrapper').lang") == "ko", "Original nonempty wrapper language is restored")
+        web_eval(editor_web, "document.getElementById('locale-test-wrapper').remove()")
+        controller.save(replace(custom, locale="ko"))
+        previous_card = browser.table.get_current_card().id
+        browser.onNextCard()
+        wait_until(lambda: browser.table.get_current_card().id != previous_card)
+        drain_collection_queue()
+        wait_until(lambda: all(value == "ko" for value in web_eval(editor_web, field_locales)))
+        check(True, "Changing browser notes retains the selected editor locale")
+        from aqt import gui_hooks
+        controller.save(replace(custom, locale="ja"))
+        add_cards = aqt.dialogs.open("AddCards", mw)
+        wait_until(lambda: add_cards.editor.web._domDone and getattr(add_cards.editor, "_ready", True))
+        wait_until(lambda: web_eval(add_cards.editor.web, "typeof saveNow === 'function'"))
+        check(web_eval(add_cards.editor.web, "typeof window.__ankiUiFontsEditorLocale === 'undefined'"), "Add Notes editor is outside the browser-only locale override")
+        add_cards.close()
+        drain_collection_queue()
+        controller.save(custom)
         from aqt.webview import AnkiWebView, AnkiWebViewKind
         early_web = AnkiWebView(mw, kind=AnkiWebViewKind.PREVIEWER)
         early_css = early_web.standard_css()
         check(early_web.font().pointSizeF() == controller.original_app_font.pointSizeF(), "New webview metrics are pinned before standard CSS is generated")
+        early_web.cleanup()
         early_web.deleteLater()
 
         selected_before = list(browser.table.get_selected_card_ids())
@@ -225,13 +276,16 @@ def tests():
         dialog = controller.dialog
         dialog.ui.size_default.setChecked(False)
         dialog.ui.size.setValue(20)
+        dialog.locale.setCurrentIndex(dialog.locale.findData("ko"))
         check(controller.settings.ui.size == 11.5 and app.font().pointSizeF() == 11.5, "Preview edits do not apply or persist until requested")
         dialog.reject()
         check(controller.settings == custom, "Cancel discards unapplied changes")
         controller.show_settings()
         dialog = controller.dialog
         dialog.ui.size.setValue(12)
+        dialog.locale.setCurrentIndex(dialog.locale.findData("ja"))
         check(dialog.apply(), "Apply persists a draft without closing the settings dialog")
+        check(all(value == "ja" for value in web_eval(editor_web, field_locales)), "Settings dialog Apply updates browser field locale")
         check(mw.addonManager.getConfig(controller.module)["ui"]["size"] == 12, "Settings persist through Anki's configuration API")
         dialog.ui.size.setValue(15)
         dialog.reject()
@@ -293,11 +347,12 @@ def tests():
         check(controller.settings == custom and app.font().pointSizeF() == 11.5, "Switching to another real profile preserves shared typography settings")
         switch_profile("Font Tests")
         check(controller.settings == custom and app.font().pointSizeF() == 11.5, "Returning to the original profile reapplies shared typography settings")
+        mw.col._experiments[str(ExperimentFlag.SVELTE_EDITOR)] = args.new_editor
         browser = aqt.dialogs.open("Browser", mw, search=("tag:ui_font_test",))
         wait_until(lambda: getattr(browser.editor, "_ready", True) and browser.editor.web._domDone)
         wait_until(lambda: web_eval(browser.editor.web, "typeof saveNow === 'function'"))
         drain_collection_queue()
-        result = {"version": version, "checks": checks, "success": True, "device_pixel_ratio": mw.devicePixelRatioF(), "logical_dpi": mw.logicalDpiX()}
+        result = {"version": version, "checks": checks, "success": True, "device_pixel_ratio": mw.devicePixelRatioF(), "logical_dpi": mw.logicalDpiX(), "editor": type(browser.editor).__name__}
         (OUTPUT / "integration.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         controller.show_settings()
         if args.inspect:
@@ -307,7 +362,7 @@ def tests():
             timer.start(300)
             mw._font_test_timer = timer
         else:
-            finish()
+            QTimer.singleShot(250, finish)
     except BaseException:
         (OUTPUT / "integration.json").write_text(json.dumps({"version": version, "checks": checks, "success": False, "error": traceback.format_exc()}, indent=2), encoding="utf-8")
         traceback.print_exc()

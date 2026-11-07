@@ -10,7 +10,7 @@ Set fonts for the interface and browser entries independently, with separate Lat
 2. Restart Anki.
 3. Open **Tools → UI Fonts…**. The add-on's **Config** button opens the same dialog.
 
-Alternatively, download `anki-ui-fonts-1.0.1.ankiaddon` from the [latest GitHub release](https://github.com/caocaochan/anki-ui-fonts/releases/latest) and use **Install from file…**.
+Alternatively, download `anki-ui-fonts-1.1.0.ankiaddon` from the [latest GitHub release](https://github.com/caocaochan/anki-ui-fonts/releases/latest) and use **Install from file…**.
 
 If switching from the GitHub package to AnkiWeb, disable the existing GitHub-installed copy before enabling the AnkiWeb copy. AnkiWeb uses a different add-on folder ID, so the copies can coexist and their settings are not migrated automatically.
 
@@ -26,7 +26,7 @@ Each area has searchable installed-font pickers and a size in points (6–48 pt)
 | CJK: Automatic | Prefer an installed regional Noto Sans family, then Microsoft's regional UI font. |
 | CJK: Anki default | Keep ordinary system fallback rather than selecting a regional CJK family. |
 | Size: Anki default | Preserve the native UI size or template-specific browser pixel size. |
-| Rendering locale | Anki default, zh-Hans, zh-Hant-TW, zh-Hant-HK, ja, or ko. |
+| Rendering locale | Anki default, zh-Hans, zh-Hant-TW, zh-Hant-HK, ja, or ko; also applies to the browser's note fields. |
 
 For Simplified Chinese, **Segoe UI + Automatic CJK + zh-Hans** is the recommended starting point. Automatic prefers **Noto Sans SC**, then **Microsoft YaHei UI** if Noto Sans SC is unavailable. Browser entries can use their own Latin font and size.
 
@@ -38,7 +38,8 @@ Configuration is local to the add-on installation, shared across Anki profiles, 
 
 - Native menus, dialogs, controls, browser sidebar, and browser headings use general UI settings. Browser entry settings cover all table columns in Cards and Notes modes.
 - Supported interface webviews include deck lists, overview, toolbars, preferences, deck options, statistics, and selected import/utility dialogs. Unknown third-party webviews are left alone.
-- Note editor webviews, reviewer card content, card previews, and template editing retain their own typography. The editor's embedded toolbar is also left alone, since it shares the note-field webview.
+- Browser note fields follow the main rendering locale, including rich-text/shadow-DOM fields. Their font families, sizes, inline formatting, and saved HTML remain unchanged. Choosing Anki default restores the original field-wrapper language metadata. Existing explicit language tags or regional CJK fonts can take priority.
+- Add Notes, reviewer card content, card previews, and template editing retain their own typography and language metadata. The browser editor's embedded toolbar also retains its existing typography; the language override applies only to field wrappers.
 - Font families are ordered fallbacks, not strict Unicode-script assignments. If the Latin font contains Han characters, those glyphs take priority. The dialog detects representative Han coverage and explains this limitation.
 - Shared Han characters do not reveal whether a passage is Chinese or Japanese. One regional preference applies to untagged Han text. An explicitly chosen CJK font takes priority over the automatic locale preset.
 - The rendering locale does not change Anki's translations, Qt's date/number locale, system locale, note data, or templates. Fonts with a fixed regional design retain that design even if another locale is selected.
@@ -71,7 +72,7 @@ See [VALIDATION.md](VALIDATION.md) for the verified runtime and coverage.
 
 ## Integration notes
 
-The add-on retains Anki's browser delegate and wraps only `DataModel.data()` for FontRole and `Table._update_font()` for row height. `AnkiWebView.standard_css()` is wrapped to pin original metrics before CSS generation. Public GUI hooks handle web content, theme/profile changes, and browser initialization. All wrappers are installed once per main window.
+The add-on retains Anki's browser delegate and wraps only `DataModel.data()` for FontRole and `Table._update_font()` for row height. `AnkiWebView.standard_css()` is wrapped to pin original metrics before CSS generation. Public GUI hooks handle web content, theme/profile changes, and browser initialization. Browser field language is set on `.editing-area` wrappers outside editable content; a scoped observer handles newly mounted wrappers without editing field HTML. This works in the legacy and newer Svelte editors. All wrappers are installed once per main window.
 
 Qt 6.11.2 can reuse a font engine's original fallback when only secondary font families change. This was reproduced using `QTextLayout.glyphRuns()`. A distinct, unsupported `UIFN` variable-axis value separates each font stack's engine cache entry without changing glyph metrics, named styles, global substitutions, or application-wide script fallback lists. The regression test checks the actual rendered font families, not only `QFont.families()`. This workaround is covered on the bundled Windows DirectWrite backend; custom GDI configurations are not validated.
 

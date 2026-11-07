@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+- Apply the existing rendering locale to note fields in the browser, including rich-text fields in both editor implementations. No new setting is added.
+- Preserve field fonts, sizes, inline formatting, and saved HTML. Explicit content language tags remain intact.
+- Restore original wrapper language metadata when Anki default is selected; keep the locale across note changes and newly mounted fields.
+- Leave Add Notes, reviewer cards, previews, and template editing unchanged.
+
+Validation: 16 unit/Qt tests and 61 integration checks pass with both the legacy editor at 200% scaling and the newer Svelte editor at 150% scaling.
+
 ## 1.0.1
 
 First public release, targeting Anki 26.09.4 on Windows 11.
